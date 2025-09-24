@@ -101,10 +101,37 @@ class NotificationKit:
 		# 对敏感信息进行base64编码显示
 		safe_url = base64.b64encode(self.webhook_url.encode()).decode()
 		safe_headers = base64.b64encode(self.webhook_headers.encode()).decode()
-		print(f'webhook_url: {safe_url}, webhook_headers: {safe_headers}')
+		print(f'[DEBUG] webhook_url: {safe_url}')
+		print(f'[DEBUG] webhook_headers: {safe_headers}')
+		print(f'[DEBUG] payload size: {len(json.dumps(data))} bytes')
 		
-		with httpx.Client(timeout=30.0) as client:
-			client.post(self.webhook_url, json=data, headers=headers)
+		try:
+			with httpx.Client(timeout=30.0) as client:
+				print(f'[DEBUG] Sending POST request to webhook...')
+				response = client.post(self.webhook_url, json=data, headers=headers)
+				
+				print(f'[DEBUG] Response status: {response.status_code}')
+				print(f'[DEBUG] Response headers: {dict(response.headers)}')
+				print(f'[DEBUG] Response content: {response.text[:500]}...' if len(response.text) > 500 else f'[DEBUG] Response content: {response.text}')
+				
+				# 检查响应状态
+				if response.status_code >= 200 and response.status_code < 300:
+					print('[DEBUG] Webhook request completed successfully')
+				else:
+					print(f'[WARNING] Webhook returned non-2xx status: {response.status_code}')
+					
+		except httpx.TimeoutException as e:
+			print(f'[ERROR] Webhook request timeout: {e}')
+			raise
+		except httpx.ConnectError as e:
+			print(f'[ERROR] Webhook connection failed: {e}')
+			raise
+		except httpx.RequestError as e:
+			print(f'[ERROR] Webhook request error: {e}')
+			raise
+		except Exception as e:
+			print(f'[ERROR] Unexpected webhook error: {e}')
+			raise
 
 	def push_message(self, title: str, content: str, msg_type: Literal['text', 'html'] = 'text'):
 		notifications = [
