@@ -118,7 +118,7 @@ class NotificationKit:
 			print(f'[DEBUG] Sending POST request to webhook...')
 			
 			# 发送请求
-			response = requests.post(self.webhook_url, headers=headers, data=payload, timeout=30)
+			response = requests.request("POST", self.webhook_url, headers=headers, data=payload)
 			
 			print(f'[DEBUG] Response status: {response.status_code} {response.reason}')
 			print(f'[DEBUG] Response headers: {dict(response.headers)}')
