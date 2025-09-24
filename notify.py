@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import smtplib
@@ -96,7 +97,12 @@ class NotificationKit:
 		headers.setdefault('Content-Type', 'application/json')
 		
 		data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
-		print('webhook_url: {}, webhook_headers: {}'.format(self.webhook_url, self.webhook_headers))
+		
+		# 对敏感信息进行base64编码显示
+		safe_url = base64.b64encode(self.webhook_url.encode()).decode() if self.webhook_url else 'None'
+		safe_headers = base64.b64encode(self.webhook_headers.encode()).decode() if self.webhook_headers else '{}'
+		print(f'webhook_url: {safe_url}, webhook_headers: {safe_headers}')
+		
 		with httpx.Client(timeout=30.0) as client:
 			client.post(self.webhook_url, json=data, headers=headers)
 
