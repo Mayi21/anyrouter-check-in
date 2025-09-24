@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from typing import Literal
 
 import httpx
+import requests
 
 
 class NotificationKit:
@@ -89,44 +90,56 @@ class NotificationKit:
 		if not self.webhook_url:
 			raise ValueError('Webhook URL not configured')
 
+		# 解析自定义headers
 		try:
-			headers = json.loads(self.webhook_headers)
+			custom_headers = json.loads(self.webhook_headers)
 		except json.JSONDecodeError:
-			headers = {}
+			custom_headers = {}
 		
-		headers.setdefault('Content-Type', 'application/json')
-		
+		# 构建请求数据
 		data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
+		payload = json.dumps(data)
+		
+		# 构建请求头
+		headers = {
+			'Content-Type': 'application/json',
+			'User-Agent': 'AnyRouter-CheckIn/1.0.0'
+		}
+		headers.update(custom_headers)
 		
 		# 对敏感信息进行base64编码显示
 		safe_url = base64.b64encode(self.webhook_url.encode()).decode()
 		safe_headers = base64.b64encode(self.webhook_headers.encode()).decode()
 		print(f'[DEBUG] webhook_url: {safe_url}')
 		print(f'[DEBUG] webhook_headers: {safe_headers}')
-		print(f'[DEBUG] payload size: {len(json.dumps(data))} bytes')
+		print(f'[DEBUG] payload size: {len(payload)} bytes')
 		
 		try:
-			with httpx.Client(timeout=30.0) as client:
-				print(f'[DEBUG] Sending POST request to webhook...')
-				response = client.post(self.webhook_url, json=data, headers=headers)
-				
-				print(f'[DEBUG] Response status: {response.status_code}')
-				print(f'[DEBUG] Response headers: {dict(response.headers)}')
-				print(f'[DEBUG] Response content: {response.text[:500]}...' if len(response.text) > 500 else f'[DEBUG] Response content: {response.text}')
-				
-				# 检查响应状态
-				if response.status_code >= 200 and response.status_code < 300:
-					print('[DEBUG] Webhook request completed successfully')
-				else:
-					print(f'[WARNING] Webhook returned non-2xx status: {response.status_code}')
-					
-		except httpx.TimeoutException as e:
+			print(f'[DEBUG] Sending POST request to webhook...')
+			
+			# 发送请求
+			response = requests.post(self.webhook_url, headers=headers, data=payload, timeout=30)
+			
+			print(f'[DEBUG] Response status: {response.status_code} {response.reason}')
+			print(f'[DEBUG] Response headers: {dict(response.headers)}')
+			print(f'[DEBUG] Response content: {response.text[:500]}...' if len(response.text) > 500 else f'[DEBUG] Response content: {response.text}')
+			
+			# 检查响应状态
+			if 200 <= response.status_code < 300:
+				print('[DEBUG] Webhook request completed successfully')
+			else:
+				print(f'[WARNING] Webhook returned non-2xx status: {response.status_code} {response.reason}')
+			
+		except requests.exceptions.ConnectTimeout as e:
+			print(f'[ERROR] Webhook connection timeout: {e}')
+			raise
+		except requests.exceptions.ConnectionError as e:
+			print(f'[ERROR] Webhook connection error: {e}')
+			raise
+		except requests.exceptions.Timeout as e:
 			print(f'[ERROR] Webhook request timeout: {e}')
 			raise
-		except httpx.ConnectError as e:
-			print(f'[ERROR] Webhook connection failed: {e}')
-			raise
-		except httpx.RequestError as e:
+		except requests.exceptions.RequestException as e:
 			print(f'[ERROR] Webhook request error: {e}')
 			raise
 		except Exception as e:
