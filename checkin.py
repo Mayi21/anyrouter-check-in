@@ -243,8 +243,8 @@ async def check_in_account(account_info, account_index):
 									'after': user_info_after['display_text']
 								}
 							else:
-								print(f'[FAILED] {account_name}: API success but no balance change - likely already checked in today')
-								return False, {
+								print(f'[SUCCESS] {account_name}: API success but no balance change - likely already checked in today')
+								return True, {
 									'before': user_info_before['display_text'],
 									'after': user_info_after['display_text']
 								}
@@ -289,8 +289,8 @@ async def check_in_account(account_info, account_index):
 									'after': user_info_after['display_text']
 								}
 							else:
-								print(f'[FAILED] {account_name}: Response success but no balance change - likely already checked in today')
-								return False, {
+								print(f'[SUCCESS] {account_name}: Response success but no balance change - likely already checked in today')
+								return True, {
 									'before': user_info_before['display_text'],
 									'after': user_info_after['display_text']
 								}
