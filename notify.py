@@ -98,7 +98,7 @@ class NotificationKit:
 		
 		# 构建请求数据
 		data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
-		payload = json.dumps(data)
+		payload = json.dumps({'message': data})
 		
 		# 构建请求头
 		headers = {
