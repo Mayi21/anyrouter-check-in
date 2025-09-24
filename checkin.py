@@ -134,9 +134,13 @@ def get_user_info(client, headers):
 				user_data = data.get('data', {})
 				quota = round(user_data.get('quota', 0) / 500000, 2)
 				used_quota = round(user_data.get('used_quota', 0) / 500000, 2)
-				return f':money: Current balance: ${quota}, Used: ${used_quota}'
+				return {
+					'quota': quota,
+					'used_quota': used_quota,
+					'display_text': f':money: Current balance: ${quota}, Used: ${used_quota}'
+				}
 	except Exception as e:
-		return f'[FAIL] Failed to get user info: {str(e)[:50]}...'
+		return None
 	return None
 
 
@@ -151,22 +155,34 @@ async def check_in_account(account_info, account_index):
 
 	if not api_user:
 		print(f'[FAILED] {account_name}: API user identifier not found')
-		return False, None
+		return False, {
+			'before': 'Configuration error',
+			'after': 'API user not found'
+		}
 
 	# 解析用户 cookies
 	user_cookies = parse_cookies(cookies_data)
 	if not user_cookies:
 		print(f'[FAILED] {account_name}: Invalid configuration format')
-		return False, None
+		return False, {
+			'before': 'Configuration error',
+			'after': 'Invalid cookies format'
+		}
 
 	# 步骤1：获取 WAF cookies
 	waf_cookies = await get_waf_cookies_with_playwright(account_name)
 	if not waf_cookies:
 		print(f'[FAILED] {account_name}: Unable to get WAF cookies')
-		return False, None
+		return False, {
+			'before': 'Unable to get balance',
+			'after': 'WAF cookies failed'
+		}
 
 	# 步骤2：使用 httpx 进行 API 请求
 	client = httpx.Client(http2=True, timeout=30.0)
+
+	# 初始化变量
+	user_info_before = None
 
 	try:
 		# 合并 WAF cookies 和用户 cookies
@@ -187,12 +203,13 @@ async def check_in_account(account_info, account_index):
 			'new-api-user': api_user,
 		}
 
-		user_info_text = None
-
-		user_info = get_user_info(client, headers)
-		if user_info:
-			print(user_info)
-			user_info_text = user_info
+		# 获取签到前的余额信息
+		print(f'[INFO] {account_name}: Getting balance before check-in...')
+		user_info_before = get_user_info(client, headers)
+		if user_info_before:
+			print(f'[INFO] {account_name}: Balance before: {user_info_before["display_text"]}')
+		else:
+			print(f'[WARN] {account_name}: Failed to get balance before check-in')
 
 		print(f'[NETWORK] {account_name}: Executing check-in')
 
@@ -208,27 +225,109 @@ async def check_in_account(account_info, account_index):
 			try:
 				result = response.json()
 				if result.get('ret') == 1 or result.get('code') == 0 or result.get('success'):
-					print(f'[SUCCESS] {account_name}: Check-in successful!')
-					return True, user_info_text
+					print(f'[INFO] {account_name}: API returned success, checking balance changes...')
+					
+					# 获取签到后的余额信息
+					user_info_after = get_user_info(client, headers)
+					if user_info_after:
+						print(f'[INFO] {account_name}: Balance after: {user_info_after["display_text"]}')
+						
+						# 比较余额是否有变化
+						if user_info_before and user_info_after:
+							balance_changed = user_info_after['quota'] != user_info_before['quota']
+							if balance_changed:
+								balance_diff = user_info_after['quota'] - user_info_before['quota']
+								print(f'[SUCCESS] {account_name}: Check-in successful! Balance increased by ${balance_diff}')
+								return True, {
+									'before': user_info_before['display_text'],
+									'after': user_info_after['display_text']
+								}
+							else:
+								print(f'[FAILED] {account_name}: API success but no balance change - likely already checked in today')
+								return False, {
+									'before': user_info_before['display_text'],
+									'after': user_info_after['display_text']
+								}
+						else:
+							print(f'[WARN] {account_name}: Unable to compare balance, treating as successful')
+							return True, {
+								'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+								'after': user_info_after['display_text'] if user_info_after else 'Unknown'
+							}
+					else:
+						print(f'[WARN] {account_name}: Failed to get balance after check-in, treating as successful')
+						return True, {
+							'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+							'after': 'Unable to get balance'
+						}
 				else:
 					error_msg = result.get('msg', result.get('message', 'Unknown error'))
 					print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
-					return False, user_info_text
+					user_info_final = {
+						'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+						'after': 'Check-in failed'
+					}
+					return False, user_info_final
 			except json.JSONDecodeError:
 				# 如果不是 JSON 响应，检查是否包含成功标识
 				if 'success' in response.text.lower():
-					print(f'[SUCCESS] {account_name}: Check-in successful!')
-					return True, user_info_text
+					print(f'[INFO] {account_name}: Response success, checking balance changes...')
+					
+					# 获取签到后的余额信息
+					user_info_after = get_user_info(client, headers)
+					if user_info_after:
+						print(f'[INFO] {account_name}: Balance after: {user_info_after["display_text"]}')
+						
+						# 比较余额是否有变化
+						if user_info_before and user_info_after:
+							balance_changed = user_info_after['quota'] != user_info_before['quota']
+							if balance_changed:
+								balance_diff = user_info_after['quota'] - user_info_before['quota']
+								print(f'[SUCCESS] {account_name}: Check-in successful! Balance increased by ${balance_diff}')
+								return True, {
+									'before': user_info_before['display_text'],
+									'after': user_info_after['display_text']
+								}
+							else:
+								print(f'[FAILED] {account_name}: Response success but no balance change - likely already checked in today')
+								return False, {
+									'before': user_info_before['display_text'],
+									'after': user_info_after['display_text']
+								}
+						else:
+							print(f'[WARN] {account_name}: Unable to compare balance, treating as successful')
+							return True, {
+								'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+								'after': user_info_after['display_text'] if user_info_after else 'Unknown'
+							}
+					else:
+						print(f'[WARN] {account_name}: Failed to get balance after check-in, treating as successful')
+						return True, {
+							'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+							'after': 'Unable to get balance'
+						}
 				else:
 					print(f'[FAILED] {account_name}: Check-in failed - Invalid response format')
-					return False, user_info_text
+					user_info_final = {
+						'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+						'after': 'Invalid response format'
+					}
+					return False, user_info_final
 		else:
 			print(f'[FAILED] {account_name}: Check-in failed - HTTP {response.status_code}')
-			return False, user_info_text
+			user_info_final = {
+				'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+				'after': f'HTTP {response.status_code} error'
+			}
+			return False, user_info_final
 
 	except Exception as e:
 		print(f'[FAILED] {account_name}: Error occurred during check-in process - {str(e)[:50]}...')
-		return False, user_info_text
+		user_info_final = {
+			'before': user_info_before['display_text'] if user_info_before else 'Unknown',
+			'after': f'Exception: {str(e)[:20]}...'
+		}
+		return False, user_info_final
 	finally:
 		client.close()
 
@@ -253,14 +352,19 @@ async def main():
 
 	for i, account in enumerate(accounts):
 		try:
-			success, user_info = await check_in_account(account, i)
+			success, balance_info = await check_in_account(account, i)
 			if success:
 				success_count += 1
 			# 收集通知内容
 			status = '[SUCCESS]' if success else '[FAIL]'
 			account_result = f'{status} Account {i + 1}'
-			if user_info:
-				account_result += f'\n{user_info}'
+			if balance_info:
+				if isinstance(balance_info, dict) and 'before' in balance_info and 'after' in balance_info:
+					account_result += f'\nBefore: {balance_info["before"]}'
+					account_result += f'\nAfter: {balance_info["after"]}'
+				else:
+					# 兼容旧格式
+					account_result += f'\n{balance_info}'
 			notification_content.append(account_result)
 		except Exception as e:
 			print(f'[FAILED] Account {i + 1} processing exception: {e}')
@@ -286,7 +390,12 @@ async def main():
 
 	print(notify_content)
 
-	notify.push_message('AnyRouter Check-in Results', notify_content, msg_type='text')
+	# 只在有成功签到的账号时发送通知
+	if success_count > 0:
+		print(f'[NOTIFY] Sending notification for {success_count} successful check-ins')
+		notify.push_message('AnyRouter Check-in Results', notify_content, msg_type='text')
+	else:
+		print('[INFO] No successful check-ins, skipping notification')
 
 	# 设置退出码
 	sys.exit(0 if success_count > 0 else 1)

@@ -1,3 +1,4 @@
+import json
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -17,6 +18,8 @@ class NotificationKit:
 		self.dingding_webhook = os.getenv('DINGDING_WEBHOOK')
 		self.feishu_webhook = os.getenv('FEISHU_WEBHOOK')
 		self.weixin_webhook = os.getenv('WEIXIN_WEBHOOK')
+		self.webhook_url = os.getenv('WEBHOOK_URL')
+		self.webhook_headers = os.getenv('WEBHOOK_HEADERS', '{}')
 
 	def send_email(self, title: str, content: str, msg_type: Literal['text', 'html'] = 'text'):
 		if not self.email_user or not self.email_pass or not self.email_to:
@@ -81,6 +84,22 @@ class NotificationKit:
 		with httpx.Client(timeout=30.0) as client:
 			client.post(self.weixin_webhook, json=data)
 
+	def send_webhook(self, title: str, content: str):
+		if not self.webhook_url:
+			raise ValueError('Webhook URL not configured')
+
+		try:
+			headers = json.loads(self.webhook_headers)
+		except json.JSONDecodeError:
+			headers = {}
+		
+		headers.setdefault('Content-Type', 'application/json')
+		
+		data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
+		
+		with httpx.Client(timeout=30.0) as client:
+			client.post(self.webhook_url, json=data, headers=headers)
+
 	def push_message(self, title: str, content: str, msg_type: Literal['text', 'html'] = 'text'):
 		notifications = [
 			('Email', lambda: self.send_email(title, content, msg_type)),
@@ -89,6 +108,7 @@ class NotificationKit:
 			('DingTalk', lambda: self.send_dingtalk(title, content)),
 			('Feishu', lambda: self.send_feishu(title, content)),
 			('WeChat Work', lambda: self.send_wecom(title, content)),
+			('Webhook', lambda: self.send_webhook(title, content)),
 		]
 
 		for name, func in notifications:
