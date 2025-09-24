@@ -96,7 +96,7 @@ class NotificationKit:
 		headers.setdefault('Content-Type', 'application/json')
 		
 		data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
-		print(f'webhook_url: {}, webhook_headers: {}'.format(self.webhook_url, self.webhook_headers))
+		print('webhook_url: {}, webhook_headers: {}'.format(self.webhook_url, self.webhook_headers))
 		with httpx.Client(timeout=30.0) as client:
 			client.post(self.webhook_url, json=data, headers=headers)
 
