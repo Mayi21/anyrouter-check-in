@@ -390,12 +390,9 @@ async def main():
 
 	print(notify_content)
 
-	# 只在有成功签到的账号时发送通知
-	if success_count > 0:
-		print(f'[NOTIFY] Sending notification for {success_count} successful check-ins')
-		notify.push_message('AnyRouter Check-in Results', notify_content, msg_type='text')
-	else:
-		print('[INFO] No successful check-ins, skipping notification')
+	# 发送通知，无论签到是否成功
+	print(f'[NOTIFY] Sending notification for check-in results: {success_count}/{total_count} successful')
+	notify.push_message('AnyRouter Check-in Results', notify_content, msg_type='text')
 
 	# 设置退出码
 	sys.exit(0 if success_count > 0 else 1)
