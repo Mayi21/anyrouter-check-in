@@ -349,26 +349,75 @@ async def main():
 	success_count = 0
 	total_count = len(accounts)
 	notification_content = []
+	structured_results = []  # 新增：存储结构化的签到结果
 
 	for i, account in enumerate(accounts):
 		try:
 			success, balance_info = await check_in_account(account, i)
 			if success:
 				success_count += 1
-			# 收集通知内容
+			
+			# 构建结构化结果数据
+			account_result = {
+				'account_index': i + 1,
+				'success': success,
+				'balance_before': None,
+				'balance_after': None,
+				'balance_before_raw': None,
+				'balance_after_raw': None,
+				'error_message': None
+			}
+			
+			# 解析余额信息
+			if balance_info and isinstance(balance_info, dict):
+				if 'before' in balance_info and 'after' in balance_info:
+					account_result['balance_before'] = balance_info['before']
+					account_result['balance_after'] = balance_info['after']
+					# 尝试提取原始数值
+					try:
+						# 从 display_text 中提取数值，格式如 ":money: Current balance: $5.0, Used: $2.5"
+						before_text = balance_info['before']
+						after_text = balance_info['after']
+						
+						if 'Current balance: $' in before_text:
+							before_balance = float(before_text.split('Current balance: $')[1].split(',')[0])
+							account_result['balance_before_raw'] = before_balance
+						
+						if 'Current balance: $' in after_text:
+							after_balance = float(after_text.split('Current balance: $')[1].split(',')[0])
+							account_result['balance_after_raw'] = after_balance
+					except:
+						pass
+				else:
+					account_result['error_message'] = str(balance_info)
+			elif not success:
+				account_result['error_message'] = balance_info if isinstance(balance_info, str) else 'Unknown error'
+			
+			structured_results.append(account_result)
+			
+			# 保持原有的文本格式（向后兼容）
 			status = '[SUCCESS]' if success else '[FAIL]'
-			account_result = f'{status} Account {i + 1}'
+			account_text = f'{status} Account {i + 1}'
 			if balance_info:
 				if isinstance(balance_info, dict) and 'before' in balance_info and 'after' in balance_info:
-					account_result += f'\nBefore: {balance_info["before"]}'
-					account_result += f'\nAfter: {balance_info["after"]}'
+					account_text += f'\nBefore: {balance_info["before"]}'
+					account_text += f'\nAfter: {balance_info["after"]}'
 				else:
 					# 兼容旧格式
-					account_result += f'\n{balance_info}'
-			notification_content.append(account_result)
+					account_text += f'\n{balance_info}'
+			notification_content.append(account_text)
 		except Exception as e:
 			print(f'[FAILED] Account {i + 1} processing exception: {e}')
 			notification_content.append(f'[FAIL] Account {i + 1} exception: {str(e)[:50]}...')
+			structured_results.append({
+				'account_index': i + 1,
+				'success': False,
+				'balance_before': None,
+				'balance_after': None,
+				'balance_before_raw': None,
+				'balance_after_raw': None,
+				'error_message': f'Exception: {str(e)[:50]}...'
+			})
 
 	# 构建通知内容
 	summary = [
@@ -392,7 +441,20 @@ async def main():
 
 	# 发送通知，无论签到是否成功
 	print(f'[NOTIFY] Sending notification for check-in results: {success_count}/{total_count} successful')
-	notify.push_message('AnyRouter Check-in Results', notify_content, msg_type='text')
+	
+	# 构建完整的通知数据
+	notification_data = {
+		'title': 'AnyRouter Check-in Results',
+		'content': notify_content,
+		'summary': {
+			'success_count': success_count,
+			'total_count': total_count,
+			'execution_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		},
+		'accounts': structured_results
+	}
+	
+	notify.push_message_structured(notification_data, msg_type='text')
 
 	# 设置退出码
 	sys.exit(0 if success_count > 0 else 1)
