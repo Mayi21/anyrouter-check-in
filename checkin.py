@@ -426,7 +426,7 @@ def check_in_baozi_account(account_info, account_index):
 
 		print(f'[NETWORK] {account_name}: Executing check-in')
 
-		response = client.post('https://lucky.5202030.xyz/lottery', headers=headers, timeout=30)
+		response = client.post('https://lucky.5202030.xyz/sign', headers=headers, timeout=30)
 
 		print(f'[RESPONSE] {account_name}: Response status code {response.status_code}')
 
