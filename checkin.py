@@ -374,28 +374,14 @@ async def main():
 	app_config = AppConfig.load_from_env()
 	print(f'[INFO] Loaded {len(app_config.providers)} provider configuration(s)')
 
+	# 加载 AnyRouter/AgentRouter 账号配置
 	accounts = load_accounts_config()
 	if not accounts:
-		print('[FAILED] Unable to load account configuration, program exits')
-		sys.exit(1)
-	time_info = f'[TIME] Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
-	all_results = []
-	total_success = 0
-	total_accounts = 0
+		print('[WARNING] No AnyRouter/AgentRouter accounts configured')
+		accounts = []
 
-	# ========== AnyRouter 签到 ==========
-	print('\n' + '='*50)
-	print('[SYSTEM] Starting AnyRouter check-in process')
-	print('='*50)
-
-	accounts = load_accounts()
 	if accounts:
-		print(f'[INFO] Found {len(accounts)} AnyRouter account configurations')
-
-		anyrouter_results = []
-		anyrouter_success = 0
-		anyrouter_total = len(accounts)
-	print(f'[INFO] Found {len(accounts)} account configurations')
+		print(f'[INFO] Found {len(accounts)} AnyRouter/AgentRouter account configuration(s)')
 
 	last_balance_hash = load_balance_hash()
 
@@ -406,20 +392,7 @@ async def main():
 	need_notify = False  # 是否需要发送通知
 	balance_changed = False  # 余额是否有变化
 
-		for i, account in enumerate(accounts):
-			try:
-				success, user_info = await check_in_account(account, i)
-				if success:
-					anyrouter_success += 1
-				# 收集通知内容
-				status = '[SUCCESS]' if success else '[FAIL]'
-				account_result = f'{status} Account {i + 1}'
-				if user_info:
-					account_result += f'\n{user_info}'
-				anyrouter_results.append(account_result)
-			except Exception as e:
-				print(f'[FAILED] Account {i + 1} processing exception: {e}')
-				anyrouter_results.append(f'[FAIL] Account {i + 1} exception: {str(e)[:50]}...')
+	# ========== 处理 AnyRouter/AgentRouter 账号 ==========
 	for i, account in enumerate(accounts):
 		account_key = f'account_{i + 1}'
 		try:
@@ -472,45 +445,6 @@ async def main():
 		else:
 			print('[INFO] No balance changes detected')
 
-		# 构建 AnyRouter 结果
-		anyrouter_summary = [
-			'=== AnyRouter Check-in Results ===',
-			'\n'.join(anyrouter_results),
-			f'\n[STATS] Success: {anyrouter_success}/{anyrouter_total}',
-		]
-		all_results.append('\n'.join(anyrouter_summary))
-		total_success += anyrouter_success
-		total_accounts += anyrouter_total
-	else:
-		print('[INFO] No AnyRouter accounts configured, skipping')
-
-	# ========== jiubanai 签到 ==========
-	print('\n' + '='*50)
-	print('[SYSTEM] Starting jiubanai check-in process')
-	print('='*50)
-
-	jiubanai_accounts = load_jiubanai_accounts()
-	if jiubanai_accounts:
-		print(f'[INFO] Found {len(jiubanai_accounts)} jiubanai account configurations')
-
-		jiubanai_results = []
-		jiubanai_success = 0
-		jiubanai_total = len(jiubanai_accounts)
-
-		for i, account in enumerate(jiubanai_accounts):
-			try:
-				success, user_info = check_in_jiubanai_account(account, i)
-				if success:
-					jiubanai_success += 1
-				# 收集通知内容
-				status = '[SUCCESS]' if success else '[FAIL]'
-				account_result = f'{status} Account {i + 1}'
-				if user_info:
-					account_result += f'\n{user_info}'
-				jiubanai_results.append(account_result)
-			except Exception as e:
-				print(f'[FAILED] jiubanai Account {i + 1} processing exception: {e}')
-				jiubanai_results.append(f'[FAIL] Account {i + 1} exception: {str(e)[:50]}...')
 	# 为有余额变化的情况添加所有成功账号到通知内容
 	if balance_changed:
 		for i, account in enumerate(accounts):
@@ -528,65 +462,95 @@ async def main():
 	if current_balance_hash:
 		save_balance_hash(current_balance_hash)
 
-	if need_notify and notification_content:
-		# 构建通知内容
-		summary = [
-			'[STATS] Check-in result statistics:',
-			f'[SUCCESS] Success: {success_count}/{total_count}',
-			f'[FAIL] Failed: {total_count - success_count}/{total_count}',
-		]
+	# ========== jiubanai 签到 ==========
+	print('\n' + '='*50)
+	print('[SYSTEM] Starting jiubanai check-in process')
+	print('='*50)
 
-		if success_count == total_count:
-			summary.append('[SUCCESS] All accounts check-in successful!')
-		elif success_count > 0:
-			summary.append('[WARN] Some accounts check-in successful')
-		else:
-			summary.append('[ERROR] All accounts check-in failed')
+	jiubanai_accounts = load_jiubanai_accounts()
+	jiubanai_success = 0
+	jiubanai_total = 0
+	jiubanai_notification_content = []
 
-		# 构建 jiubanai 结果
-		jiubanai_summary = [
-			'=== jiubanai Check-in Results ===',
-			'\n'.join(jiubanai_results),
-			f'\n[STATS] Success: {jiubanai_success}/{jiubanai_total}',
-		]
-		all_results.append('\n'.join(jiubanai_summary))
-		total_success += jiubanai_success
-		total_accounts += jiubanai_total
+	if jiubanai_accounts:
+		print(f'[INFO] Found {len(jiubanai_accounts)} jiubanai account configurations')
+		jiubanai_total = len(jiubanai_accounts)
+
+		for i, account in enumerate(jiubanai_accounts):
+			try:
+				success, user_info = check_in_jiubanai_account(account, i)
+				if success:
+					jiubanai_success += 1
+				
+				# jiubanai 总是需要通知（无论成功失败）
+				need_notify = True
+				status = '[SUCCESS]' if success else '[FAIL]'
+				account_result = f'{status} jiubanai Account {i + 1}'
+				if user_info:
+					account_result += f'\n{user_info}'
+				jiubanai_notification_content.append(account_result)
+			except Exception as e:
+				print(f'[FAILED] jiubanai Account {i + 1} processing exception: {e}')
+				need_notify = True
+				jiubanai_notification_content.append(f'[FAIL] jiubanai Account {i + 1} exception: {str(e)[:50]}...')
 	else:
 		print('[INFO] No jiubanai accounts configured, skipping')
+
+	# ========== 构建最终通知内容 ==========
+	if need_notify and (notification_content or jiubanai_notification_content):
 		time_info = f'[TIME] Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
-
-		notify_content = '\n\n'.join([time_info, '\n'.join(notification_content), '\n'.join(summary)])
-	# ========== 总结 ==========
-	if total_accounts == 0:
-		print('[ERROR] No accounts configured for any site!')
-		sys.exit(1)
-
+		
+		final_notification = [time_info]
+		
+		# 添加 AnyRouter/AgentRouter 结果
+		if notification_content:
+			anyrouter_summary = [
+				'',
+				'=== AnyRouter/AgentRouter Check-in Results ===',
+				'\n'.join(notification_content),
+				f'[STATS] Success: {success_count}/{total_count}',
+			]
+			final_notification.extend(anyrouter_summary)
+		
+		# 添加 jiubanai 结果
+		if jiubanai_notification_content:
+			jiubanai_summary = [
+				'',
+				'=== jiubanai Check-in Results ===',
+				'\n'.join(jiubanai_notification_content),
+				f'[STATS] Success: {jiubanai_success}/{jiubanai_total}',
+			]
+			final_notification.extend(jiubanai_summary)
+		
+		# 总体统计
+		total_all_success = success_count + jiubanai_success
+		total_all_accounts = total_count + jiubanai_total
+		
+		if total_all_accounts > 0:
+			overall_summary = []
+			if total_all_success == total_all_accounts:
+				overall_summary.append('\n[SUCCESS] All accounts check-in successful!')
+			elif total_all_success > 0:
+				overall_summary.append(f'\n[WARN] Partial success: {total_all_success}/{total_all_accounts}')
+			else:
+				overall_summary.append('\n[ERROR] All accounts check-in failed')
+			final_notification.extend(overall_summary)
+		
+		notify_content = '\n'.join(final_notification)
+		
+		print('\n' + '='*50)
+		print('[FINAL RESULTS]')
+		print('='*50)
 		print(notify_content)
-		notify.push_message('AnyRouter Check-in Alert', notify_content, msg_type='text')
+		
+		notify.push_message('Multi-Site Check-in Alert', notify_content, msg_type='text')
 		print('[NOTIFY] Notification sent due to failures or balance changes')
 	else:
 		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
-	overall_summary = []
-	if total_success == total_accounts:
-		overall_summary.append('[SUCCESS] All accounts check-in successful!')
-	elif total_success > 0:
-		overall_summary.append(f'[WARN] Partial success: {total_success}/{total_accounts}')
-	else:
-		overall_summary.append('[ERROR] All accounts check-in failed')
-
-	# 构建完整通知内容
-	notify_content = '\n\n'.join([time_info] + all_results + overall_summary)
-
-	print('\n' + '='*50)
-	print('[FINAL RESULTS]')
-	print('='*50)
-	print(notify_content)
-
-	notify.push_message('Multi-Site Check-in Results', notify_content, msg_type='text')
 
 	# 设置退出码
-	sys.exit(0 if total_success > 0 else 1)
+	total_all_success = success_count + jiubanai_success
+	sys.exit(0 if total_all_success > 0 else 1)
 
 
 def run_main():
