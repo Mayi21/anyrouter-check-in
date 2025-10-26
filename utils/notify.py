@@ -140,13 +140,16 @@ class NotificationKit:
 			print(f'[DEBUG] Response status: {response.status_code} {response.reason}')
 			print(f'[DEBUG] Response headers: {dict(response.headers)}')
 			print(f'[DEBUG] Response content: {response.text[:500]}...' if len(response.text) > 500 else f'[DEBUG] Response content: {response.text}')
-			
+
 			# 检查响应状态
 			if 200 <= response.status_code < 300:
 				print('[DEBUG] Webhook request completed successfully')
 			else:
-				print(f'[WARNING] Webhook returned non-2xx status: {response.status_code} {response.reason}')
-			
+				error_msg = f'Webhook returned non-2xx status: {response.status_code} {response.reason}'
+				print(f'[WARNING] {error_msg}')
+				print(f'[DEBUG] Response body: {response.text}')
+				raise ValueError(f'{error_msg} - {response.text[:100]}')
+
 		except requests.exceptions.ConnectTimeout as e:
 			print(f'[ERROR] Webhook connection timeout: {e}')
 			raise
@@ -158,6 +161,9 @@ class NotificationKit:
 			raise
 		except requests.exceptions.RequestException as e:
 			print(f'[ERROR] Webhook request error: {e}')
+			raise
+		except ValueError as e:
+			# 重新抛出 ValueError (来自状态码检查)
 			raise
 		except Exception as e:
 			print(f'[ERROR] Unexpected webhook error: {e}')

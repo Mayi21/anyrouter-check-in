@@ -543,10 +543,35 @@ async def main():
 				account_name = account.get_display_name(i)
 				print(f'[NOTIFY] {account_name} failed, will send notification')
 
+			# 构建结构化结果数据
+			account_result_data = {
+				'account_index': i + 1,
+				'account_name': account.get_display_name(i),
+				'provider': account.provider,
+				'success': success,
+				'balance_before': None,
+				'balance_after': None,
+				'balance_before_raw': None,
+				'balance_after_raw': None,
+				'error_message': None
+			}
+
 			if user_info and user_info.get('success'):
 				current_quota = user_info['quota']
 				current_used = user_info['used_quota']
 				current_balances[account_key] = {'quota': current_quota, 'used': current_used}
+
+				# 填充余额信息
+				account_result_data['balance_before_raw'] = current_quota
+				account_result_data['balance_after_raw'] = current_quota
+				account_result_data['balance_before'] = user_info['display']
+				account_result_data['balance_after'] = user_info['display']
+			elif user_info:
+				account_result_data['error_message'] = user_info.get('error', 'Unknown error')
+			elif not success:
+				account_result_data['error_message'] = 'Check-in failed'
+
+			structured_results.append(account_result_data)
 
 			if should_notify_this_account:
 				account_name = account.get_display_name(i)
@@ -563,6 +588,19 @@ async def main():
 			print(f'[FAILED] {account_name} processing exception: {e}')
 			need_notify = True  # 异常也需要通知
 			notification_content.append(f'[FAIL] {account_name} exception: {str(e)[:50]}...')
+
+			# 添加异常的结构化数据
+			structured_results.append({
+				'account_index': i + 1,
+				'account_name': account_name,
+				'provider': account.provider,
+				'success': False,
+				'balance_before': None,
+				'balance_after': None,
+				'balance_before_raw': None,
+				'balance_after_raw': None,
+				'error_message': f'Exception: {str(e)[:50]}...'
+			})
 
 	# 检查余额变化
 	current_balance_hash = generate_balance_hash(current_balances) if current_balances else None
@@ -624,10 +662,37 @@ async def main():
 				if user_info:
 					account_result += f'\n{user_info}'
 				jiubanai_notification_content.append(account_result)
+
+				# 添加结构化数据
+				structured_results.append({
+					'account_index': total_count + i + 1,
+					'account_name': f'jiubanai Account {i + 1}',
+					'provider': 'jiubanai',
+					'success': success,
+					'balance_before': user_info if success else None,
+					'balance_after': user_info if success else None,
+					'balance_before_raw': None,
+					'balance_after_raw': None,
+					'error_message': user_info if not success else None
+				})
+
 			except Exception as e:
 				print(f'[FAILED] jiubanai Account {i + 1} processing exception: {e}')
 				need_notify = True
 				jiubanai_notification_content.append(f'[FAIL] jiubanai Account {i + 1} exception: {str(e)[:50]}...')
+
+				# 添加异常的结构化数据
+				structured_results.append({
+					'account_index': total_count + i + 1,
+					'account_name': f'jiubanai Account {i + 1}',
+					'provider': 'jiubanai',
+					'success': False,
+					'balance_before': None,
+					'balance_after': None,
+					'balance_before_raw': None,
+					'balance_after_raw': None,
+					'error_message': f'Exception: {str(e)[:50]}...'
+				})
 	else:
 		print('[INFO] No jiubanai accounts configured, skipping')
 
@@ -659,10 +724,38 @@ async def main():
 				if user_info:
 					account_result += f'\n{user_info}'
 				baozi_notification_content.append(account_result)
+
+				# 添加结构化数据
+				structured_results.append({
+					'account_index': total_count + jiubanai_total + i + 1,
+					'account_name': account_name,
+					'provider': 'baozi',
+					'success': success,
+					'balance_before': user_info if success else None,
+					'balance_after': user_info if success else None,
+					'balance_before_raw': None,
+					'balance_after_raw': None,
+					'error_message': user_info if not success else None
+				})
+
 			except Exception as e:
 				print(f'[FAILED] baozi Account {i + 1} processing exception: {e}')
 				need_notify = True
 				baozi_notification_content.append(f'[FAIL] baozi Account {i + 1} exception: {str(e)[:50]}...')
+
+				# 添加异常的结构化数据
+				account_name = account.get('name', f'baozi Account {i + 1}')
+				structured_results.append({
+					'account_index': total_count + jiubanai_total + i + 1,
+					'account_name': account_name,
+					'provider': 'baozi',
+					'success': False,
+					'balance_before': None,
+					'balance_after': None,
+					'balance_before_raw': None,
+					'balance_after_raw': None,
+					'error_message': f'Exception: {str(e)[:50]}...'
+				})
 	else:
 		print('[INFO] No baozi accounts configured, skipping')
 
@@ -723,7 +816,19 @@ async def main():
 		print('='*50)
 		print(notify_content)
 
-		notify.push_message('Multi-Site Check-in Alert', notify_content, msg_type='text')
+		# 使用结构化通知
+		notification_data = {
+			'title': 'Multi-Site Check-in Alert',
+			'content': notify_content,
+			'summary': {
+				'success_count': total_all_success,
+				'total_count': total_all_accounts,
+				'execution_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+			},
+			'accounts': structured_results
+		}
+
+		notify.push_message_structured(notification_data, msg_type='text')
 		print('[NOTIFY] Notification sent due to failures or balance changes')
 	else:
 		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
