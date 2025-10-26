@@ -273,13 +273,13 @@ def check_in_jiubanai_account(account_info, account_index):
 
 	if not veloera_user:
 		print(f'[FAILED] {account_name}: veloera_user identifier not found')
-		return False, None
+		return False, 'veloera_user identifier not found'
 
 	# 解析用户 cookies
 	user_cookies = parse_cookies(cookies_data)
 	if not user_cookies:
 		print(f'[FAILED] {account_name}: Invalid configuration format')
-		return False, None
+		return False, 'Invalid configuration format'
 
 	# 使用 httpx 进行 API 请求（jiubanai 无需 WAF 绕过）
 	client = httpx.Client(http2=True, timeout=30.0)
@@ -311,24 +311,26 @@ def check_in_jiubanai_account(account_info, account_index):
 				result = response.json()
 				if result.get('success'):
 					quota = result.get('data', {}).get('quota', 0)
-					message = result.get('message', 'Check-in successful')
+					message = result.get('message', '签到成功')
 					print(f'[SUCCESS] {account_name}: {message}')
-					user_info_text = f'💰 Quota gained: {quota}'
+					user_info_text = f'{message}\n💰 Quota gained: {quota}'
 					return True, user_info_text
 				else:
 					error_msg = result.get('message', 'Unknown error')
 					print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
-					return False, None
+					return False, error_msg
 			except json.JSONDecodeError:
-				print(f'[FAILED] {account_name}: Check-in failed - Invalid response format')
-				return False, None
+				error_msg = 'Invalid response format'
+				print(f'[FAILED] {account_name}: {error_msg}')
+				return False, error_msg
 		else:
-			print(f'[FAILED] {account_name}: Check-in failed - HTTP {response.status_code}')
-			return False, None
+			error_msg = f'HTTP {response.status_code}'
+			print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
+			return False, error_msg
 
 	except Exception as e:
 		print(f'[FAILED] {account_name}: Error occurred during check-in process - {str(e)[:50]}...')
-		return False, None
+		return False, f'Error: {str(e)[:50]}'
 	finally:
 		client.close()
 
