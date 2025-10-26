@@ -270,43 +270,19 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 	if not provider_config:
 		print(f'[FAILED] {account_name}: Provider "{account.provider}" not found in configuration')
 		return False, None
-	# 解析账号配置
-	cookies_data = account_info.get('cookies', {})
-	api_user = account_info.get('api_user', '')
-
-	if not api_user:
-		print(f'[FAILED] {account_name}: API user identifier not found')
-		return False, {
-			'before': 'Configuration error',
-			'after': 'API user not found'
-		}
 
 	print(f'[INFO] {account_name}: Using provider "{account.provider}" ({provider_config.domain})')
 
 	user_cookies = parse_cookies(account.cookies)
 	if not user_cookies:
 		print(f'[FAILED] {account_name}: Invalid configuration format')
-		return False, {
-			'before': 'Configuration error',
-			'after': 'Invalid cookies format'
-		}
+		return False, None
 
 	all_cookies = await prepare_cookies(account_name, provider_config, user_cookies)
 	if not all_cookies:
 		return False, None
-	# 步骤1：获取 WAF cookies
-	waf_cookies = await get_waf_cookies_with_playwright(account_name)
-	if not waf_cookies:
-		print(f'[FAILED] {account_name}: Unable to get WAF cookies')
-		return False, {
-			'before': 'Unable to get balance',
-			'after': 'WAF cookies failed'
-		}
 
 	client = httpx.Client(http2=True, timeout=30.0)
-
-	# 初始化变量
-	user_info_before = None
 
 	try:
 		client.cookies.update(all_cookies)
@@ -383,13 +359,6 @@ def check_in_jiubanai_account(account_info, account_index):
 			'Connection': 'keep-alive',
 			'veloera-user': veloera_user,
 		}
-		# 获取签到前的余额信息
-		print(f'[INFO] {account_name}: Getting balance before check-in...')
-		user_info_before = get_user_info(client, headers)
-		if user_info_before:
-			print(f'[INFO] {account_name}: Balance before: {user_info_before["display_text"]}')
-		else:
-			print(f'[WARN] {account_name}: Failed to get balance before check-in')
 
 		print(f'[NETWORK] {account_name}: Executing check-in')
 
@@ -406,51 +375,10 @@ def check_in_jiubanai_account(account_info, account_index):
 					print(f'[SUCCESS] {account_name}: {message}')
 					user_info_text = f'{message}\n💰 Quota gained: {quota}'
 					return True, user_info_text
-				if result.get('ret') == 1 or result.get('code') == 0 or result.get('success'):
-					print(f'[INFO] {account_name}: API returned success, checking balance changes...')
-
-					# 获取签到后的余额信息
-					user_info_after = get_user_info(client, headers)
-					if user_info_after:
-						print(f'[INFO] {account_name}: Balance after: {user_info_after["display_text"]}')
-
-						# 比较余额是否有变化
-						if user_info_before and user_info_after:
-							balance_changed = user_info_after['quota'] != user_info_before['quota']
-							if balance_changed:
-								balance_diff = user_info_after['quota'] - user_info_before['quota']
-								print(f'[SUCCESS] {account_name}: Check-in successful! Balance increased by ${balance_diff}')
-								return True, {
-									'before': user_info_before['display_text'],
-									'after': user_info_after['display_text']
-								}
-							else:
-								print(f'[SUCCESS] {account_name}: API success but no balance change - likely already checked in today')
-								return True, {
-									'before': user_info_before['display_text'],
-									'after': user_info_after['display_text']
-								}
-						else:
-							print(f'[WARN] {account_name}: Unable to compare balance, treating as successful')
-							return True, {
-								'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-								'after': user_info_after['display_text'] if user_info_after else 'Unknown'
-							}
-					else:
-						print(f'[WARN] {account_name}: Failed to get balance after check-in, treating as successful')
-						return True, {
-							'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-							'after': 'Unable to get balance'
-						}
 				else:
 					error_msg = result.get('message', 'Unknown error')
 					print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
 					return False, error_msg
-					user_info_final = {
-						'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-						'after': 'Check-in failed'
-					}
-					return False, user_info_final
 			except json.JSONDecodeError:
 				error_msg = 'Invalid response format'
 				print(f'[FAILED] {account_name}: {error_msg}')
