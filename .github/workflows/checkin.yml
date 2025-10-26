@@ -74,6 +74,7 @@ jobs:
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
         JIUBANAI_ACCOUNTS: ${{ secrets.JIUBANAI_ACCOUNTS }}
+        BAOZI_ACCOUNTS: ${{ secrets.BAOZI_ACCOUNTS }}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}

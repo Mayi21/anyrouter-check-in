@@ -110,11 +110,10 @@ class NotificationKit:
 					"parse_mode": "HTML"
 				})
 		else:
-			# 构建请求数据
-			data = {'title': title, 'content': content, 'timestamp': os.environ.get('GITHUB_RUN_ID', '')}
+			# 构建请求数据 - 直接发送 content 作为 message
 			payload = json.dumps({
-					"message": json.dumps(data, ensure_ascii=False)
-					})
+				"message": content
+			})
 		
 
 		
