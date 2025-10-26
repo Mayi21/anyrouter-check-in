@@ -79,6 +79,35 @@ def load_jiubanai_accounts():
 		return None
 
 
+def load_baozi_accounts():
+	"""从环境变量加载 baozi 账号配置"""
+	accounts_str = os.getenv('BAOZI_ACCOUNTS')
+	if not accounts_str:
+		return None
+
+	try:
+		accounts_data = json.loads(accounts_str)
+
+		# 检查是否为数组格式
+		if not isinstance(accounts_data, list):
+			print('ERROR: baozi account configuration must use array format [{}]')
+			return None
+
+		# 验证账号数据格式
+		for i, account in enumerate(accounts_data):
+			if not isinstance(account, dict):
+				print(f'ERROR: baozi Account {i + 1} configuration format is incorrect')
+				return None
+			if 'cookies' not in account:
+				print(f'ERROR: baozi Account {i + 1} missing required field (cookies)')
+				return None
+
+		return accounts_data
+	except Exception as e:
+		print(f'ERROR: baozi account configuration format is incorrect: {e}')
+		return None
+
+
 def parse_cookies(cookies_data):
 	"""解析 cookies 数据"""
 	if isinstance(cookies_data, dict):
@@ -366,6 +395,74 @@ def check_in_jiubanai_account(account_info, account_index):
 		client.close()
 
 
+def check_in_baozi_account(account_info, account_index):
+	"""为单个 baozi 账号执行签到操作"""
+	account_name = account_info.get('name', f'baozi Account {account_index + 1}')
+	print(f'\n[PROCESSING] Starting to process {account_name}')
+
+	# 解析账号配置
+	cookies_data = account_info.get('cookies', {})
+
+	# 解析用户 cookies
+	user_cookies = parse_cookies(cookies_data)
+	if not user_cookies:
+		print(f'[FAILED] {account_name}: Invalid configuration format')
+		return False, 'Invalid configuration format'
+
+	# 使用 httpx 进行 API 请求（baozi 无需 WAF 绕过）
+	client = httpx.Client(http2=True, timeout=30.0)
+
+	try:
+		# 设置 cookies
+		client.cookies.update(user_cookies)
+
+		# 构建请求头
+		headers = {
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+			'Accept': '*/*',
+			'Host': 'lucky.5202030.xyz',
+			'Connection': 'keep-alive',
+		}
+
+		print(f'[NETWORK] {account_name}: Executing check-in')
+
+		response = client.post('https://lucky.5202030.xyz/lottery', headers=headers, timeout=30)
+
+		print(f'[RESPONSE] {account_name}: Response status code {response.status_code}')
+
+		if response.status_code == 200:
+			try:
+				result = response.json()
+				success = result.get('success', False)
+				message = result.get('message', '未知响应')
+
+				if success:
+					print(f'[SUCCESS] {account_name}: {message}')
+					quota = result.get('quota', 0)
+					current_balance = result.get('current_balance', 0)
+					redemption_code = result.get('redemption_code', '')
+					user_info_text = f'{message}\n💰 Quota: {quota}\n💵 Current balance: {current_balance}\n🎟️ Redemption code: {redemption_code}'
+					return True, user_info_text
+				else:
+					print(f'[INFO] {account_name}: {message}')
+					user_info_text = message
+					return False, user_info_text
+			except json.JSONDecodeError:
+				error_msg = 'Invalid response format'
+				print(f'[FAILED] {account_name}: {error_msg}')
+				return False, error_msg
+		else:
+			error_msg = f'HTTP {response.status_code}'
+			print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
+			return False, error_msg
+
+	except Exception as e:
+		print(f'[FAILED] {account_name}: Error occurred during check-in process - {str(e)[:50]}...')
+		return False, f'Error: {str(e)[:50]}'
+	finally:
+		client.close()
+
+
 async def main():
 	"""主函数"""
 	print('[SYSTEM] Multi-site auto check-in script started')
@@ -496,8 +593,43 @@ async def main():
 	else:
 		print('[INFO] No jiubanai accounts configured, skipping')
 
+	# ========== baozi 签到 ==========
+	print('\n' + '='*50)
+	print('[SYSTEM] Starting baozi check-in process')
+	print('='*50)
+
+	baozi_accounts = load_baozi_accounts()
+	baozi_success = 0
+	baozi_total = 0
+	baozi_notification_content = []
+
+	if baozi_accounts:
+		print(f'[INFO] Found {len(baozi_accounts)} baozi account configurations')
+		baozi_total = len(baozi_accounts)
+
+		for i, account in enumerate(baozi_accounts):
+			try:
+				success, user_info = check_in_baozi_account(account, i)
+				if success:
+					baozi_success += 1
+
+				# baozi 总是需要通知（无论成功失败）
+				need_notify = True
+				status = '[SUCCESS]' if success else '[INFO]'
+				account_name = account.get('name', f'baozi Account {i + 1}')
+				account_result = f'{status} {account_name}'
+				if user_info:
+					account_result += f'\n{user_info}'
+				baozi_notification_content.append(account_result)
+			except Exception as e:
+				print(f'[FAILED] baozi Account {i + 1} processing exception: {e}')
+				need_notify = True
+				baozi_notification_content.append(f'[FAIL] baozi Account {i + 1} exception: {str(e)[:50]}...')
+	else:
+		print('[INFO] No baozi accounts configured, skipping')
+
 	# ========== 构建最终通知内容 ==========
-	if need_notify and (notification_content or jiubanai_notification_content):
+	if need_notify and (notification_content or jiubanai_notification_content or baozi_notification_content):
 		time_info = f'[TIME] Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 		
 		final_notification = [time_info]
@@ -521,10 +653,20 @@ async def main():
 				f'[STATS] Success: {jiubanai_success}/{jiubanai_total}',
 			]
 			final_notification.extend(jiubanai_summary)
-		
+
+		# 添加 baozi 结果
+		if baozi_notification_content:
+			baozi_summary = [
+				'',
+				'=== baozi Check-in Results ===',
+				'\n'.join(baozi_notification_content),
+				f'[STATS] Success: {baozi_success}/{baozi_total}',
+			]
+			final_notification.extend(baozi_summary)
+
 		# 总体统计
-		total_all_success = success_count + jiubanai_success
-		total_all_accounts = total_count + jiubanai_total
+		total_all_success = success_count + jiubanai_success + baozi_success
+		total_all_accounts = total_count + jiubanai_total + baozi_total
 		
 		if total_all_accounts > 0:
 			overall_summary = []
@@ -549,7 +691,7 @@ async def main():
 		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
 
 	# 设置退出码
-	total_all_success = success_count + jiubanai_success
+	total_all_success = success_count + jiubanai_success + baozi_success
 	sys.exit(0 if total_all_success > 0 else 1)
 
 

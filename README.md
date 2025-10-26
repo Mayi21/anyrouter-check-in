@@ -253,6 +253,122 @@
 - `PROVIDERS` 是可选的，不配置则使用内置的 `anyrouter` 和 `agentrouter`
 - 自定义的 provider 配置会覆盖同名的默认配置
 
+## jiubanai 网站签到配置（可选）
+
+脚本支持 jiubanai 网站（gy.jiubanai.com）的自动签到功能，这是一个可选配置，不影响其他网站的签到功能。
+
+### 配置步骤
+
+1. 进入你的仓库 Settings -> Environments -> production
+2. 添加新的 secret：
+   - Name: `JIUBANAI_ACCOUNTS`
+   - Value: 你的 jiubanai 账号配置（JSON 格式）
+
+### 配置格式
+
+支持单个或多个账号配置，`cookies` 字段支持两种格式：
+
+**格式 1 - 字典格式（推荐）**：
+```json
+[
+  {
+    "cookies": {
+      "session": "xxx",
+      "token": "yyy"
+    },
+    "veloera_user": "12345"
+  }
+]
+```
+
+**格式 2 - 字符串格式**：
+```json
+[
+  {
+    "cookies": "session=xxx; token=yyy; other=zzz",
+    "veloera_user": "12345"
+  }
+]
+```
+
+**字段说明**：
+- `cookies` (必需)：Cookie 数据，支持两种格式
+  - 字典格式：`{"key": "value", ...}`
+  - 字符串格式：`"key1=value1; key2=value2"`
+- `veloera_user` (必需)：veloera-user 标识，用于请求头验证
+- `name`：不支持自定义，账号名称固定为 `jiubanai Account 1`、`jiubanai Account 2` 等
+
+### 获取配置信息
+
+#### 获取 Cookie：
+1. 打开浏览器，访问 https://gy.jiubanai.com/
+2. 登录你的账户
+3. 打开开发者工具 (F12)
+4. 切换到 "Network" 选项卡
+5. 刷新页面或执行任意操作
+6. 找到任意请求，在请求头中复制完整的 Cookie 值
+
+#### 获取 veloera_user：
+1. 在 "Network" 选项卡中
+2. 找到发往 jiubanai 的请求
+3. 查看请求头中的 `veloera-user` 字段值
+4. 复制该值作为配置中的 `veloera_user`
+
+### 通知说明
+
+- jiubanai 网站签到总是会发送通知（无论成功或失败）
+- 签到成功时，通知内容包含：
+  - 签到结果消息
+  - 获得的 Quota
+- 失败时会显示具体的错误信息
+
+## 包子网站签到配置（可选）
+
+脚本支持包子网站（lucky.5202030.xyz）的自动抽奖签到功能，这是一个可选配置，不影响其他网站的签到功能。
+
+### 配置步骤
+
+1. 进入你的仓库 Settings -> Environments -> production
+2. 添加新的 secret：
+   - Name: `BAOZI_ACCOUNTS`
+   - Value: 你的包子账号配置（JSON 格式）
+
+### 配置格式
+
+支持单个或多个账号配置：
+
+```json
+[
+  {
+    "cookies": "完整的 Cookie 字符串",
+    "name": "我的包子账号"
+  }
+]
+```
+
+**字段说明**：
+- `cookies` (必需)：完整的 Cookie 字符串，包含登录凭证信息
+- `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
+
+### 获取 Cookie
+
+1. 打开浏览器，访问 https://lucky.5202030.xyz/
+2. 登录你的账户
+3. 打开开发者工具 (F12)
+4. 切换到 "Network" 选项卡
+5. 刷新页面或执行任意操作
+6. 找到任意请求，在请求头中复制完整的 Cookie 值
+
+### 通知说明
+
+- 包子网站签到总是会发送通知（无论成功或失败）
+- 签到成功时，通知内容包含：
+  - 抽奖结果消息
+  - 获得的额度（quota）
+  - 当前账户余额（current_balance）
+  - 兑换码（redemption_code）
+- 重复签到时，会提示"今天已经抽过奖了，明天再来吧！"
+
 ## 开启通知
 
 脚本支持多种通知方式，可以通过配置以下环境变量开启，如果 `webhook` 有要求安全设置，例如钉钉，可以在新建机器人时选择自定义关键词，填写 `AnyRouter`。
