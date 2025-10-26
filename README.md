@@ -12,7 +12,9 @@
 
 - ✅ 多平台（兼容 NewAPI 与 OneAPI）
 - ✅ 单个/多账号自动签到
-- ✅ 多种机器人通知（可选）
+- ✅ 智能签到检测：只有当余额真正增加时才视为签到成功
+- ✅ 多种机器人通知（可选），支持自定义 Webhook
+- ✅ 只在成功签到时发送通知，避免重复通知
 - ✅ 绕过 WAF 限制
 
 ## 使用方法
@@ -392,6 +394,19 @@
 
 ### Server酱
 - `SERVERPUSHKEY`: Server酱的 SendKey
+
+### 自定义 Webhook 通知
+- `WEBHOOK_URL`: Webhook 接收地址
+- `WEBHOOK_HEADERS`: 可选的 HTTP 请求头，JSON 格式字符串，例如：`{"Authorization": "Bearer token", "Content-Type": "application/json"}`
+
+Webhook 发送的 JSON 数据格式：
+```json
+{
+  "title": "AnyRouter Check-in Results",
+  "content": "签到结果详情内容",
+  "timestamp": "GitHub_RUN_ID"
+}
+```
 
 配置步骤：
 1. 在仓库的 Settings -> Environments -> production -> Environment secrets 中添加上述环境变量
