@@ -560,31 +560,14 @@ def check_in_baozi_account(account_info, account_index):
 				error_msg = 'Invalid response format'
 				print(f'[FAILED] {account_name}: {error_msg}')
 				return False, error_msg
-					print(f'[FAILED] {account_name}: Check-in failed - Invalid response format')
-					user_info_final = {
-						'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-						'after': 'Invalid response format'
-					}
-					return False, user_info_final
 		else:
 			error_msg = f'HTTP {response.status_code}'
 			print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
 			return False, error_msg
-			print(f'[FAILED] {account_name}: Check-in failed - HTTP {response.status_code}')
-			user_info_final = {
-				'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-				'after': f'HTTP {response.status_code} error'
-			}
-			return False, user_info_final
 
 	except Exception as e:
 		print(f'[FAILED] {account_name}: Error occurred during check-in process - {str(e)[:50]}...')
 		return False, f'Error: {str(e)[:50]}'
-		user_info_final = {
-			'before': user_info_before['display_text'] if user_info_before else 'Unknown',
-			'after': f'Exception: {str(e)[:20]}...'
-		}
-		return False, user_info_final
 	finally:
 		client.close()
 
@@ -621,7 +604,6 @@ async def main():
 		account_key = f'account_{i + 1}'
 		try:
 			success, user_info = await check_in_account(account, i, app_config)
-			success, balance_info = await check_in_account(account, i)
 			if success:
 				success_count += 1
 
@@ -753,80 +735,6 @@ async def main():
 				print(f'[FAILED] baozi Account {i + 1} processing exception: {e}')
 				need_notify = True
 				baozi_notification_content.append(f'[FAIL] baozi Account {i + 1} exception: {str(e)[:50]}...')
-
-			# 构建结构化结果数据
-			account_result = {
-				'account_index': i + 1,
-				'success': success,
-				'balance_before': None,
-				'balance_after': None,
-				'balance_before_raw': None,
-				'balance_after_raw': None,
-				'error_message': None
-			}
-
-			# 解析余额信息
-			if balance_info and isinstance(balance_info, dict):
-				if 'before' in balance_info and 'after' in balance_info:
-					account_result['balance_before'] = balance_info['before']
-					account_result['balance_after'] = balance_info['after']
-					# 尝试提取原始数值
-					try:
-						# 从 display_text 中提取数值，格式如 ":money: Current balance: $5.0, Used: $2.5"
-						before_text = balance_info['before']
-						after_text = balance_info['after']
-
-						if 'Current balance: $' in before_text:
-							before_balance = float(before_text.split('Current balance: $')[1].split(',')[0])
-							account_result['balance_before_raw'] = before_balance
-
-						if 'Current balance: $' in after_text:
-							after_balance = float(after_text.split('Current balance: $')[1].split(',')[0])
-							account_result['balance_after_raw'] = after_balance
-					except:
-						pass
-				else:
-					account_result['error_message'] = str(balance_info)
-			elif not success:
-				account_result['error_message'] = balance_info if isinstance(balance_info, str) else 'Unknown error'
-
-			structured_results.append(account_result)
-
-			# 保持原有的文本格式（向后兼容）
-			status = '[SUCCESS]' if success else '[FAIL]'
-			account_text = f'{status} Account {i + 1}'
-			if balance_info:
-				if isinstance(balance_info, dict) and 'before' in balance_info and 'after' in balance_info:
-					account_text += f'\nBefore: {balance_info["before"]}'
-					account_text += f'\nAfter: {balance_info["after"]}'
-				else:
-					# 兼容旧格式
-					account_text += f'\n{balance_info}'
-			notification_content.append(account_text)
-		except Exception as e:
-			print(f'[FAILED] Account {i + 1} processing exception: {e}')
-			notification_content.append(f'[FAIL] Account {i + 1} exception: {str(e)[:50]}...')
-			structured_results.append({
-				'account_index': i + 1,
-				'success': False,
-				'balance_before': None,
-				'balance_after': None,
-				'balance_before_raw': None,
-				'balance_after_raw': None,
-				'error_message': f'Exception: {str(e)[:50]}...'
-			})
-
-	# 构建通知内容
-	summary = [
-		'[STATS] Check-in result statistics:',
-		f'[SUCCESS] Success: {success_count}/{total_count}',
-		f'[FAIL] Failed: {total_count - success_count}/{total_count}',
-	]
-
-	if success_count == total_count:
-		summary.append('[SUCCESS] All accounts check-in successful!')
-	elif success_count > 0:
-		summary.append('[WARN] Some accounts check-in successful')
 	else:
 		print('[INFO] No baozi accounts configured, skipping')
 
@@ -891,24 +799,6 @@ async def main():
 		print('[NOTIFY] Notification sent due to failures or balance changes')
 	else:
 		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
-	print(notify_content)
-
-	# 发送通知，无论签到是否成功
-	print(f'[NOTIFY] Sending notification for check-in results: {success_count}/{total_count} successful')
-
-	# 构建完整的通知数据
-	notification_data = {
-		'title': 'AnyRouter Check-in Results',
-		'content': notify_content,
-		'summary': {
-			'success_count': success_count,
-			'total_count': total_count,
-			'execution_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-		},
-		'accounts': structured_results
-	}
-
-	notify.push_message_structured(notification_data, msg_type='text')
 
 	# 设置退出码
 	total_all_success = success_count + jiubanai_success + baozi_success
